@@ -91,15 +91,24 @@ void JNIEXPORT
     DLIB_FACE_JNI_METHOD(jniNativeClassInit)(JNIEnv* env, jclass _this) {}
 
 jobjectArray getDetectResult(JNIEnv* env, DetectorPtr faceDetector,
-                             const int& size) {
+                             const int& size, 
+                             cv::Rect& roi,
+                             int nMinW, 
+                             int nMaxW,
+                             float fScale = 1.0f ) {
   LOG(INFO) << "getFaceRet";
   jobjectArray jDetRetArray = JNI_VisionDetRet::createJObjectArray(env, size);
   for (int i = 0; i < size; i++) {
     jobject jDetRet = JNI_VisionDetRet::createJObject(env);
     env->SetObjectArrayElement(jDetRetArray, i, jDetRet);
     dlib::rectangle rect = faceDetector->getResult()[i];
-    g_pJNI_VisionDetRet->setRect(env, jDetRet, rect.left(), rect.top(),
-                                 rect.right(), rect.bottom());
+
+    double scale = static_cast<double>(fScale);
+    rect *= scale;
+    if ( rect.width() >= nMinW && rect.width() <= nMaxW )
+        g_pJNI_VisionDetRet->setRect(env, jDetRet, rect.left()+roi.x, rect.top()+roi.y,
+                                  rect.right(), rect.bottom());
+
     g_pJNI_VisionDetRet->setLabel(env, jDetRet, "face");
     std::unordered_map<int, dlib::full_object_detection>& faceShapeMap =
         faceDetector->getFaceShapeMap();
@@ -125,26 +134,56 @@ JNIEXPORT jobjectArray JNICALL
   int size = detPtr->det(std::string(img_path));
   env->ReleaseStringUTFChars(imgPath, img_path);
   LOG(INFO) << "det face size: " << size;
-  return getDetectResult(env, detPtr, size);
+  cv::Rect r( 0, 0, 0, 0 );
+
+  return getDetectResult(env, detPtr, size, r, 0, 2000 );
 }
 
 JNIEXPORT jobjectArray JNICALL
     DLIB_FACE_JNI_METHOD(jniBitmapDetect)(JNIEnv* env, jobject thiz,
-                                          jobject bitmap) {
+                                          jobject bitmap, 
+                                          jint left, jint top, 
+                                          jint right, jint bottom,
+                                          jint min_face_width, jint max_face_width ) {
   LOG(INFO) << "jniBitmapFaceDet";
   cv::Mat rgbaMat;
   cv::Mat bgrMat;
   jniutils::ConvertBitmapToRGBAMat(env, bitmap, rgbaMat, true);
   cv::cvtColor(rgbaMat, bgrMat, cv::COLOR_RGBA2BGR);
+  const int MIN_FACE_WIDTH = 40;
+
+  int W = bgrMat.cols;
+  int H = bgrMat.rows;
+  int x1 = static_cast<int>( left*W/100);
+  int x2 = static_cast<int>( right*W/100 );
+  int y1 = static_cast<int>( top*H/100 );
+  int y2 = static_cast<int>( bottom*H/100 );
+
+  int nMinW = static_cast<int>( min_face_width*W/100 );
+  int nMaxW = static_cast<int>( max_face_width*W/100 );
+
+  nMinW = std::max( 40, nMinW );
+  nMaxW = std::max( 40, nMaxW );
+  nMaxW = std::min( nMaxW, W );
+
+  float fScale = nMinW/40.0f;
+
+  cv::Rect r( x1, y1, x2-x1, y2-y1 );
+  LOG(INFO) << r;
+  cv::Mat subMat = bgrMat( r );
+ 
+  cv::Mat resizeSubMat;
+  cv::resize( subMat, resizeSubMat, cv::Size(), 1.0/fScale, 1.0/fScale );
+
   DetectorPtr detPtr = getDetectorPtr(env, thiz);
-  jint size = detPtr->det(bgrMat);
+  jint size = detPtr->det(resizeSubMat);
 #if 0
   cv::Mat rgbMat;
   cv::cvtColor(bgrMat, rgbMat, cv::COLOR_BGR2RGB);
   cv::imwrite("/sdcard/ret.jpg", rgbaMat);
 #endif
   LOG(INFO) << "det face size: " << size;
-  return getDetectResult(env, detPtr, size);
+  return getDetectResult(env, detPtr, size, r, nMinW, nMaxW, fScale );
 }
 
 jint JNIEXPORT JNICALL DLIB_FACE_JNI_METHOD(jniInit)(JNIEnv* env, jobject thiz,

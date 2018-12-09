@@ -177,6 +177,7 @@ class DLibHOGFaceDetector : public DLibHOGDetector {
   // If converting 4 channels to 3 channls because the format could be BGRA or
   // ARGB
   virtual inline int det(const cv::Mat& image) {
+    mRets.clear();
     if (image.empty())
       return 0;
     LOG(INFO) << "com_tzutalin_dlib_PeopleDet go to det(mat)";
@@ -188,6 +189,13 @@ class DLibHOGFaceDetector : public DLibHOGDetector {
     // It's unnecessary to use color image for face/landmark detection
     dlib::cv_image<dlib::bgr_pixel> img(image);
     mRets = mFaceDetector(img);
+    
+    std::sort( mRets.begin(), mRets.end(), []( const dlib::rectangle& r1, const dlib::rectangle& r2)
+      {
+        return r1.area() > r2.area();
+      });
+
+#if 0
     LOG(INFO) << "Dlib HOG face det size : " << mRets.size();
     mFaceShapeMap.clear();
     // Process shape
@@ -199,6 +207,8 @@ class DLibHOGFaceDetector : public DLibHOGDetector {
         mFaceShapeMap[j] = shape;
       }
     }
+#endif 
+
     return mRets.size();
   }
 

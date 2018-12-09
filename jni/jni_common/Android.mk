@@ -32,6 +32,7 @@ else
     LOCAL_STATIC_LIBRARIES += miniglog
 endif
 
+LOCAL_SHARED_LIBRARIES += opencv_java3
 
 
 include $(BUILD_STATIC_LIBRARY)
